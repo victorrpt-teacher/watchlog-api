@@ -6,9 +6,7 @@ from src.extensions import db
 bp = Blueprint("movies", __name__, url_prefix="/movies")
 
 class MovieService:
-    """Orquesta la logica de negocio para el recurso Movie."""
-
-    # TODO: inyectar dependencias necesarias (db.session, modelos, esquemas, etc.).
+    """Orquesta la logica de negocio para el recurso Movie."""  
     def __init__(self):
         from src.models.movie import Movie  # noqa: F401
         self.Movie = Movie
@@ -55,13 +53,48 @@ class MovieService:
 
     def get_movie(self, movie_id: int) -> dict:
         """Obtiene una pelicula por su identificador."""
-        # TODO: buscar la pelicula y manejar el caso de no encontrada.
-        pass
+        if movie_id is None:
+            return (jsonify({
+                "detail": "El identificador de la pelicula es requerido."
+            }), 400)
+        movie = self.Movie.query.get(movie_id)
+        if movie is None:
+            return (jsonify({
+                "detail": "Pelicula no encontrada."
+            }), 404)
+        return jsonify(movie.to_dict())
 
     def update_movie(self, movie_id: int, payload: dict) -> dict:
         """Actualiza los datos de una pelicula."""
-        # TODO: aplicar cambios permitidos y guardar en la base de datos.
-        pass
+        if movie_id is None:
+            return (jsonify({
+                "detail": "El identificador de la pelicula es requerido."
+            }), 400)
+        movie = self.Movie.query.get(movie_id)
+        if movie is None:
+            return (jsonify({
+                "detail": "Pelicula no encontrada."
+            }), 404)
+        if "title" in payload:
+            movie.title = payload["title"].strip()
+        if "genre" in payload:
+            movie.genre = payload["genre"].strip()
+        if "release_year" in payload:
+            try:
+                movie.release_year = int(payload["release_year"])
+            except (ValueError, TypeError):
+                return (jsonify({
+                    "detail": "El campo 'release_year' debe ser un entero valido."
+                }), 400)
+        try:
+            db.session.commit()
+        except SQLAlchemyError as e:
+            db.session.rollback()
+            return (jsonify({
+                "detail": "Error al actualizar la pelicula.",
+                "error": str(e)
+            }), 500)
+        return jsonify(movie.to_dict())
 
     def delete_movie(self, movie_id: int) -> None:
         """Elimina una pelicula existente."""
@@ -106,33 +139,14 @@ def create_movie():
 @bp.get("/<int:movie_id>")
 def retrieve_movie(movie_id: int):
     """Devuelve el detalle de una pelicula concreta."""
-    # TODO: invocar service.get_movie y manejar 404 cuando corresponda.
-    return (
-        jsonify(
-            {
-                "detail": "TODO: implementar recuperacion de pelicula",
-                "movie_id": movie_id,
-            }
-        ),
-        501,
-    )
+    return service.get_movie(movie_id)
 
 
 @bp.put("/<int:movie_id>")
 def update_movie(movie_id: int):
     """Actualiza la informacion de una pelicula."""
     payload = request.get_json(silent=True) or {}
-    # TODO: invocar service.update_movie y devolver el recurso actualizado.
-    return (
-        jsonify(
-            {
-                "detail": "TODO: implementar actualizacion de pelicula",
-                "movie_id": movie_id,
-                "payload_example": payload,
-            }
-        ),
-        501,
-    )
+    return service.update_movie(movie_id, payload)
 
 
 @bp.delete("/<int:movie_id>")
