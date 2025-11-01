@@ -1,5 +1,7 @@
 """Endpoints relacionados con peliculas."""
 from flask import Blueprint, jsonify, request
+from sqlalchemy.exc import SQLAlchemyError
+from src.extensions import db
 
 bp = Blueprint("movies", __name__, url_prefix="/movies")
 
@@ -23,8 +25,33 @@ class MovieService:
 
     def create_movie(self, payload: dict) -> dict:
         """Crea una nueva pelicula."""
-        # TODO: validar el payload y persistir un nuevo registro Movie.
-        pass
+        required = ("title", "genre", "release_year")
+        missing = [field for field in required if field not in payload]
+        if missing:
+            return (jsonify({
+                "detail": f"Faltan campos requeridos: {', '.join(missing)}"
+            }), 400)
+        try:
+            release_year = int(payload["release_year"])
+        except (ValueError, TypeError):
+            return (jsonify({
+                "detail": "El campo 'release_year' debe ser un entero valido."
+            }), 400)
+        new_movie = self.Movie(
+            title=payload["title"].strip(),
+            genre=payload["genre"].strip(),
+            release_year=release_year,
+        )
+        db.session.add(new_movie)
+        try:
+            db.session.commit()
+        except SQLAlchemyError as e:
+            db.session.rollback()
+            return (jsonify({
+                "detail": "Error al crear la pelicula.",
+                "error": str(e)
+            }), 500)
+        return jsonify(new_movie.to_dict()), 201
 
     def get_movie(self, movie_id: int) -> dict:
         """Obtiene una pelicula por su identificador."""
@@ -38,8 +65,26 @@ class MovieService:
 
     def delete_movie(self, movie_id: int) -> None:
         """Elimina una pelicula existente."""
-        # TODO: definir si el borrado debe ser logico o fisico.
-        pass
+        if movie_id is None:
+            return (jsonify({
+                "detail": "El identificador de la pelicula es requerido."
+            }), 400)
+        
+        movie = self.Movie.query.get(movie_id)
+        if movie is None:
+            return (jsonify({
+                "detail": "Pelicula no encontrada."
+            }), 404)
+        try:
+            db.session.delete(movie)
+            db.session.commit()
+        except SQLAlchemyError as e:
+            db.session.rollback()
+            return (jsonify({
+                "detail": "Error al eliminar la pelicula.",
+                "error": str(e)
+            }), 500)
+        return '', 204
 
 
 service = MovieService()
@@ -48,23 +93,14 @@ service = MovieService()
 @bp.get("/")
 def list_movies():
     """Lista todas las peliculas disponibles."""
-    return service.list_movies(), 501
+    return service.list_movies(), 200
 
 
 @bp.post("/")
 def create_movie():
     """Crea una pelicula a partir de los datos enviados."""
     payload = request.get_json(silent=True) or {}
-    # TODO: validar payload, manejar errores y devolver el recurso creado.
-    return (
-        jsonify(
-            {
-                "detail": "TODO: implementar creacion de pelicula",
-                "payload_example": payload,
-            }
-        ),
-        501,
-    )
+    return service.create_movie(payload)
 
 
 @bp.get("/<int:movie_id>")
@@ -102,13 +138,4 @@ def update_movie(movie_id: int):
 @bp.delete("/<int:movie_id>")
 def delete_movie(movie_id: int):
     """Elimina una pelicula del catalogo."""
-    # TODO: invocar service.delete_movie y devolver 204 al completar.
-    return (
-        jsonify(
-            {
-                "detail": "TODO: implementar borrado de pelicula",
-                "movie_id": movie_id,
-            }
-        ),
-        501,
-    )
+    return service.delete_movie(movie_id)

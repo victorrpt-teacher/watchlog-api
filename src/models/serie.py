@@ -2,14 +2,10 @@
 from datetime import datetime as dt, timezone as t
 
 from src.extensions import db
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, foreign
+from sqlalchemy import and_
 from typing import List
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .season import Season
-    from .watch_entry import WatchEntry  # Importar WatchEntry para la relacion
 
 class Serie(db.Model):
     """Representa una serie cargada por los usuarios."""
@@ -30,9 +26,12 @@ class Serie(db.Model):
 
     watch_entries: Mapped[List['WatchEntry']] = db.relationship(
         "WatchEntry",
-        cascade="all, delete-orphan",
         back_populates="serie",
-        lazy='select'
+        # Se trae los watch entries relacionados a esta serie cuando los solicitamos
+        # por ejemplo Serie.watch_entries
+        primaryjoin=lambda: _serie_watch_entries_join(),
+        lazy='select',
+        viewonly=True,
     )  # Relacion con WatchEntry (definida en WatchEntry)
     def __repr__(self) -> str:
         """Devuelve una representacion legible del modelo."""
@@ -51,3 +50,13 @@ class Serie(db.Model):
             # TODO: serializar temporadas reales en lugar de lista vacia.
             data["seasons"] = []
         return data
+
+
+from .season import Season  # Importar Season para la relacion
+
+def _serie_watch_entries_join():
+    from .watch_entry import WatchEntry
+    return and_(
+        foreign(WatchEntry.content_id) == Serie.id,
+        WatchEntry.content_type == 'serie',
+    )

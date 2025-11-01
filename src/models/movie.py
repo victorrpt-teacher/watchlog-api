@@ -2,11 +2,8 @@
 from datetime import datetime, timezone
 
 from src.extensions import db
-from sqlalchemy.orm import Mapped, mapped_column
-
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from .watch_entry import WatchEntry  # Importar WatchEntry para la relacion
+from sqlalchemy.orm import Mapped, mapped_column, foreign
+from sqlalchemy import and_
 
 # Mapped es utilizado para definir los tipos de las columnas del modelo.
 # mapped_column se usa para configurar las propiedades de cada columna.
@@ -24,11 +21,13 @@ class Movie(db.Model):
     # cascade="all, delete-orphan" asegura que las entradas de watch_entry asociadas se eliminen si la pelicula se elimina
     # back_populates define la relacion inversa en WatchEntry
     # lazy='select' optimiza la carga de las entradas relacionadas
-    watch_entries: Mapped[list['WatchEntry']] = db.relationship(
+    watch_entries: Mapped[list["WatchEntry"]] = db.relationship(
         "WatchEntry",
-        cascade="all, delete-orphan",
         back_populates="movie",
-        lazy='select'
+        # primaryjoin define la condicion de union, lambda se usa para evitar problemas de importacion circular
+        primaryjoin=lambda: _movie_watch_entries_join(),
+        lazy='select',
+        viewonly=True,
     ) # Relacion con WatchEntry (definida en WatchEntry)
 
     def __repr__(self) -> str:
@@ -45,3 +44,10 @@ class Movie(db.Model):
             "created_at": getattr(self, "created_at", datetime.now(timezone.utc)),
             "updated_at": getattr(self, "updated_at", datetime.now(timezone.utc)),
         }
+
+def _movie_watch_entries_join():
+    from .watch_entry import WatchEntry
+    return and_(
+        foreign(WatchEntry.content_id) == Movie.id,
+        WatchEntry.content_type == 'movie',
+    )
